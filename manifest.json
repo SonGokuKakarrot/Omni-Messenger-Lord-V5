@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Omni Messenger V5 - Android",
+  "version": "5.1",
+  "description": "Fixes Quetta late-join cutout. Loudest Messenger mic.",
+  "host_permissions": ["*://*.messenger.com/*", "*://*.facebook.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.messenger.com/*", "*://*.facebook.com/*", "*://m.facebook.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}
