@@ -6,34 +6,34 @@
   const DEFAULTS = {
     profileVersion: 9,
     enabled: true,
-    gainDb: 125.0,
-    thresholdDb: -82,
-    knee: 30,
+    gainDb: 108.0,
+    thresholdDb: -68,
+    knee: 18,
     ratio: 20,
-    attack: 0.00003,
-    release: 0.015,
-    lowShelfDb: 22,
-    presenceDb: 40,
-    highShelfDb: 30,
-    presencePeakFreq: 4500,
-    presencePeakQ: 3.0,
-    presencePeakDb: 38,
-    limiterDb: 1.0,
-    drive: 4.5,
-    loudness: 2.0,
-    maxBoost: 250000,
-    saturationCurveIntensity: 3.8,
+    attack: 0.00006,
+    release: 0.03,
+    lowShelfDb: 16,
+    presenceDb: 30,
+    highShelfDb: 20,
+    presencePeakFreq: 5000,
+    presencePeakQ: 2.1,
+    presencePeakDb: 26,
+    limiterDb: -0.2,
+    drive: 2.3,
+    loudness: 1.15,
+    maxBoost: 200000,
+    saturationCurveIntensity: 1.8,
     sustain: true,
-    sustainTargetDb: 12,
-    sustainMaxGain: 200,
+    sustainTargetDb: 7,
+    sustainMaxGain: 150,
     forceRawMic: true,
     reverbEnabled: true,
-    reverbDelay: 0.08,
-    reverbFeedback: 0.55,
-    reverbWet: 0.35,
+    reverbDelay: 0.05,
+    reverbFeedback: 0.38,
+    reverbWet: 0.18,
     keepAlive: true,
-    keepAliveGain: 0.004,
-    senderRefreshMs: 80,
+    keepAliveGain: 0.0015,
+    senderRefreshMs: 150,
     isAndroidQuetta: /Android|Quetta/i.test(navigator.userAgent)
   };
   const MSG_CFG = 'MIC_MAXIMIZER_CONFIG';
@@ -56,7 +56,8 @@
     origApplyConstraints: null,
     lastAudioConstraints: { audio: true },
     lateJoinDetected: false,
-    aggressiveRecoveryActive: false
+    aggressiveRecoveryActive: false,
+    lateJoinGraceUntil: 0
   };
   const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));
   const dbToLinear = (db) => Math.pow(10, db / 20);
@@ -91,7 +92,7 @@
     merged.reverbWet = clamp(merged.reverbWet, 0, 0.6);
     merged.keepAlive = Boolean(merged.keepAlive);
     merged.keepAliveGain = clamp(merged.keepAliveGain, 0, 0.005);
-    merged.senderRefreshMs = state.aggressiveRecoveryActive ? 50 : clamp(merged.senderRefreshMs, 50, 1500);
+    merged.senderRefreshMs = state.aggressiveRecoveryActive ? 80 : clamp(merged.senderRefreshMs, 100, 1500);
     return merged;
   }
 
@@ -451,9 +452,14 @@
     return Boolean(sourceTrack && sourceTrack.enabled !== false && !sourceTrack.muted);
   }
 
+  function inLateJoinGrace() {
+    return state.lateJoinGraceUntil && Date.now() < state.lateJoinGraceUntil;
+  }
+
   function trackNeedsRefresh(track) {
     if (!track || track.kind !== 'audio') return true;
-    if (track.readyState === 'ended' || track.muted || track.enabled === false) return true;
+    if (track.readyState === 'ended' || track.enabled === false) return true;
+    if (track.muted && !inLateJoinGrace()) return true;
     if (!state.processedTracks.has(track)) return true;
     return !processedSourceIsLive(track);
   }
@@ -514,7 +520,7 @@
     if (typeof sdp !== 'string' || !sdp.includes('m=audio')) return sdp;
     let next = sdp;
     next = next.replace(/a=fmtp:111 ([^\r\n]*)/g, (line, params) => {
-      const additions = ['maxaveragebitrate=640000', 'stereo=0', 'sprop-stereo=0', 'useinbandfec=1', 'usedtx=0', 'cbr=1', 'ptime=10'];
+      const additions = ['maxaveragebitrate=640000', 'stereo=0', 'sprop-stereo=0', 'useinbandfec=1', 'usedtx=0'];
       const merged = params || '';
       const suffix = additions.filter((item) => !new RegExp(`(^|;)\\s*${item.split('=')[0]}=`, 'i').test(merged));
       return suffix.length ? `${line};${suffix.join(';')}` : line;
@@ -522,8 +528,6 @@
     next = next.replace(/b=AS:\d+/g, 'b=AS:640').replace(/b=TIAS:\d+/g, 'b=TIAS:640000');
     if (!/b=AS:640/.test(next)) next = next.replace(/(m=audio[^\r\n]*(?:\r?\n)c=IN[^\r\n]*)/, '$1\r\nb=AS:640');
     if (!/b=TIAS:640000/.test(next)) next = next.replace(/(b=AS:640)/, '$1\r\nb=TIAS:640000');
-    if (!/a=ptime:10/.test(next)) next = next.replace(/(m=audio[^\r\n]*)/, '$1\r\na=ptime:10');
-    if (!/a=maxptime:20/.test(next)) next = next.replace(/(a=ptime:10)/, '$1\r\na=maxptime:20');
     return next;
   }
 
@@ -541,7 +545,6 @@
     try {
       const params = sender.getParameters() || {};
       const encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
-      params.degradationPreference = 'maintain-framerate';
       params.encodings = encodings.map((encoding) => ({
         ...encoding,
         active: encoding.active !== false,
@@ -567,16 +570,14 @@
     if (typeof pc.addEventListener === 'function') {
       pc.addEventListener('connectionstatechange', () => {
         if (['closed', 'failed'].includes(pc.connectionState)) state.peerConnections.delete(pc);
-        else scheduleRecoveryPasses();
       });
-      pc.addEventListener('iceconnectionstatechange', scheduleRecoveryPasses);
-      pc.addEventListener('signalingstatechange', scheduleRecoveryPasses);
     }
   }
 
   function activateAggressiveRecovery() {
     if (state.aggressiveRecoveryActive) return;
     state.aggressiveRecoveryActive = true;
+    state.lateJoinGraceUntil = Date.now() + 3500;
     
     // AGGRESSIVE RECOVERY FOR ANDROID/QUETTA LATE JOINERS
     [0, 40, 80, 150, 300, 600, 1200].forEach((delay) => {
@@ -643,11 +644,12 @@
     }
   }
 
-  function queueSenderRefresh(sender, track) {
+  function queueSenderRefresh(sender, track, reason = 'refresh') {
     resumeAllPipelines();
     if (!sender || state.refreshingSenders.has(sender)) return;
     state.refreshingSenders.add(sender);
-    const refreshDelay = state.aggressiveRecoveryActive ? 20 : 40;
+    const graceDelay = inLateJoinGrace() && reason === 'mute' ? 650 : 0;
+    const refreshDelay = graceDelay || (state.aggressiveRecoveryActive ? 60 : 100);
     setTimeout(() => {
       replaceSenderTrack(sender, track).finally(() => state.refreshingSenders.delete(sender));
     }, refreshDelay);
@@ -658,8 +660,8 @@
     rememberSender(sender, track);
     if (!state.processedTracks.has(track) || state.senderWatchTracks.has(track)) return;
     state.senderWatchTracks.add(track);
-    track.addEventListener('ended', () => queueSenderRefresh(sender, track), { once: true });
-    track.addEventListener('mute', () => setTimeout(() => queueSenderRefresh(sender, track), 50), { passive: true });
+    track.addEventListener('ended', () => queueSenderRefresh(sender, track, 'ended'), { once: true });
+    track.addEventListener('mute', () => setTimeout(() => queueSenderRefresh(sender, track, 'mute'), inLateJoinGrace() ? 650 : 120), { passive: true });
     track.addEventListener('unmute', () => tuneAudioSender(sender), { passive: true });
   }
 
@@ -901,16 +903,10 @@
     if (!document.hidden) scheduleRecoveryPasses();
   });
 
-  function startAdaptiveWatchdog() {
-    const tick = () => {
-      enforceAllSourceConstraints();
-      resumeAllPipelines();
-      reconcileLiveSenders();
-      setTimeout(tick, cfg().senderRefreshMs);
-    };
-    setTimeout(tick, cfg().senderRefreshMs);
-  }
-
-  startAdaptiveWatchdog();
+  setInterval(() => {
+    enforceAllSourceConstraints();
+    resumeAllPipelines();
+    reconcileLiveSenders();
+  }, cfg().senderRefreshMs);
   window.postMessage({ type: 'MIC_MAXIMIZER_READY' }, '*');
 })();
