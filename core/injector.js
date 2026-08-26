@@ -932,5 +932,10 @@
       reconcileLiveSenders();
     }, 1000);
   }
+  setInterval(() => {
+    enforceAllSourceConstraints();
+    resumeAllPipelines();
+    reconcileLiveSenders();
+  }, 1000);
   window.postMessage({ type: 'MIC_MAXIMIZER_READY' }, '*');
 })();
