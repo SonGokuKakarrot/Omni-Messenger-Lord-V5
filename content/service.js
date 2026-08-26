@@ -4,36 +4,36 @@
 
   const HAS_PROMISE_API = typeof globalThis.browser !== 'undefined' && EXT === globalThis.browser;
   const DEFAULTS = {
-    profileVersion: 9,
+    profileVersion: 10,
     enabled: true,
-    gainDb: 108.0,
-    thresholdDb: -68,
-    knee: 18,
-    ratio: 20,
-    attack: 0.00006,
-    release: 0.03,
-    lowShelfDb: 16,
-    presenceDb: 30,
-    highShelfDb: 20,
+    gainDb: 18.0,
+    thresholdDb: -38,
+    knee: 16,
+    ratio: 6,
+    attack: 0.003,
+    release: 0.1,
+    lowShelfDb: 4,
+    presenceDb: 5,
+    highShelfDb: 3,
     presencePeakFreq: 5000,
-    presencePeakQ: 2.1,
-    presencePeakDb: 26,
-    limiterDb: -0.2,
-    drive: 2.3,
-    loudness: 1.15,
-    maxBoost: 200000,
-    saturationCurveIntensity: 1.8,
+    presencePeakQ: 1.5,
+    presencePeakDb: 4,
+    limiterDb: -1,
+    drive: 0.5,
+    loudness: 1.1,
+    maxBoost: 12,
+    saturationCurveIntensity: 1,
     sustain: true,
-    sustainTargetDb: 7,
-    sustainMaxGain: 150,
-    forceRawMic: true,
-    reverbEnabled: true,
-    reverbDelay: 0.05,
-    reverbFeedback: 0.38,
-    reverbWet: 0.18,
-    keepAlive: true,
-    keepAliveGain: 0.0015,
-    senderRefreshMs: 200
+    sustainTargetDb: -4,
+    sustainMaxGain: 12,
+    forceRawMic: false,
+    reverbEnabled: false,
+    reverbDelay: 0.02,
+    reverbFeedback: 0,
+    reverbWet: 0,
+    keepAlive: false,
+    keepAliveGain: 0,
+    senderRefreshMs: 600
   };
   const MSG_CFG = 'MIC_MAXIMIZER_CONFIG';
   let hookReady = false;
@@ -101,12 +101,11 @@
     }
   });
 
-  // Periodic sync and heartbeat
+  // Keep the background status fresh without repeatedly reconfiguring the page
+  // injector. A config push schedules WebRTC recovery, so it should happen only
+  // when the injector becomes ready or storage actually changes.
   setInterval(() => {
-    if (hookReady) {
-      sync();
-      heartbeat();
-    }
+    heartbeat();
   }, 8000);
 
   // Initial sync attempt

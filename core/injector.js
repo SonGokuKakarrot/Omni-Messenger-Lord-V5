@@ -2,38 +2,39 @@
   if (window.__micMaxInjectorReady) return;
   window.__micMaxInjectorReady = true;
 
-  // Omni Messenger Lord V4 ULTRA — 250000x Quetta extreme profile
+  // PC-safe profile. It deliberately avoids sustained clipping and background
+  // audio work that can destabilize Chromium call pages.
   const DEFAULTS = {
-    profileVersion: 9,
+    profileVersion: 10,
     enabled: true,
-    gainDb: 108.0,
-    thresholdDb: -68,
-    knee: 18,
-    ratio: 20,
-    attack: 0.00006,
-    release: 0.03,
-    lowShelfDb: 16,
-    presenceDb: 30,
-    highShelfDb: 20,
+    gainDb: 18.0,
+    thresholdDb: -38,
+    knee: 16,
+    ratio: 6,
+    attack: 0.003,
+    release: 0.1,
+    lowShelfDb: 4,
+    presenceDb: 5,
+    highShelfDb: 3,
     presencePeakFreq: 5000,
-    presencePeakQ: 2.1,
-    presencePeakDb: 26,
-    limiterDb: -0.2,
-    drive: 2.3,
-    loudness: 1.15,
-    maxBoost: 200000,
-    saturationCurveIntensity: 1.8,
+    presencePeakQ: 1.5,
+    presencePeakDb: 4,
+    limiterDb: -1,
+    drive: 0.5,
+    loudness: 1.1,
+    maxBoost: 12,
+    saturationCurveIntensity: 1,
     sustain: true,
-    sustainTargetDb: 7,
-    sustainMaxGain: 150,
-    forceRawMic: true,
-    reverbEnabled: true,
-    reverbDelay: 0.05,
-    reverbFeedback: 0.38,
-    reverbWet: 0.18,
-    keepAlive: true,
-    keepAliveGain: 0.0015,
-    senderRefreshMs: 150,
+    sustainTargetDb: -4,
+    sustainMaxGain: 12,
+    forceRawMic: false,
+    reverbEnabled: false,
+    reverbDelay: 0.02,
+    reverbFeedback: 0,
+    reverbWet: 0,
+    keepAlive: false,
+    keepAliveGain: 0,
+    senderRefreshMs: 600,
     isAndroidQuetta: /Android|Quetta/i.test(navigator.userAgent)
   };
   const MSG_CFG = 'MIC_MAXIMIZER_CONFIG';
@@ -50,8 +51,10 @@
     peerConnections: new Set(),
     senderRecords: new Set(),
     senderBySender: new WeakMap(),
+    tunedSenders: new WeakSet(),
     refreshingSenders: new WeakSet(),
     recoverTimers: new Set(),
+    recoveryScheduled: false,
     sourceTracks: new Set(),
     origApplyConstraints: null,
     lastAudioConstraints: { audio: true },
@@ -61,42 +64,47 @@
   };
   const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));
   const dbToLinear = (db) => Math.pow(10, db / 20);
+  const saturationCurveCache = new Map();
 
   function cfg(input = state.config) {
     const merged = { ...DEFAULTS, ...(input || {}) };
+    const desktopSafe = !DEFAULTS.isAndroidQuetta;
     merged.enabled = Boolean(merged.enabled);
-    merged.maxBoost = clamp(merged.maxBoost, 1, 250000);
-    merged.loudness = clamp(merged.loudness, 0.5, merged.maxBoost);
-    merged.gainDb = clamp(merged.gainDb, 0, 125);
-    merged.drive = clamp(merged.drive, 0, 15);
-    merged.saturationCurveIntensity = clamp(merged.saturationCurveIntensity, 0.5, 5);
-    merged.thresholdDb = clamp(merged.thresholdDb, -100, 0);
-    merged.knee = clamp(merged.knee, 0, 40);
-    merged.ratio = clamp(merged.ratio, 1, 20);
-    merged.attack = clamp(merged.attack, 0.00001, 1);
+    merged.maxBoost = clamp(merged.maxBoost, 1, desktopSafe ? 16 : 250000);
+    merged.loudness = clamp(merged.loudness, 0.5, desktopSafe ? 1.25 : merged.maxBoost);
+    merged.gainDb = clamp(merged.gainDb, 0, desktopSafe ? 24 : 125);
+    merged.drive = clamp(merged.drive, 0, desktopSafe ? 1 : 15);
+    merged.saturationCurveIntensity = clamp(merged.saturationCurveIntensity, 0.5, desktopSafe ? 1.25 : 5);
+    merged.thresholdDb = clamp(merged.thresholdDb, desktopSafe ? -45 : -100, 0);
+    merged.knee = clamp(merged.knee, 0, desktopSafe ? 18 : 40);
+    merged.ratio = clamp(merged.ratio, 1, desktopSafe ? 8 : 20);
+    merged.attack = clamp(merged.attack, desktopSafe ? 0.001 : 0.00001, 1);
     merged.release = clamp(merged.release, 0.01, 1);
-    merged.lowShelfDb = clamp(merged.lowShelfDb, -60, 60);
-    merged.presenceDb = clamp(merged.presenceDb, -60, 60);
-    merged.highShelfDb = clamp(merged.highShelfDb, -60, 60);
-    merged.presencePeakDb = clamp(merged.presencePeakDb, -60, 60);
+    merged.lowShelfDb = clamp(merged.lowShelfDb, desktopSafe ? -12 : -60, desktopSafe ? 6 : 60);
+    merged.presenceDb = clamp(merged.presenceDb, desktopSafe ? -12 : -60, desktopSafe ? 8 : 60);
+    merged.highShelfDb = clamp(merged.highShelfDb, desktopSafe ? -12 : -60, desktopSafe ? 6 : 60);
+    merged.presencePeakDb = clamp(merged.presencePeakDb, desktopSafe ? -12 : -60, desktopSafe ? 6 : 60);
     merged.presencePeakFreq = clamp(merged.presencePeakFreq, 1000, 12000);
     merged.presencePeakQ = clamp(merged.presencePeakQ, 0.5, 10);
-    merged.limiterDb = clamp(merged.limiterDb, -24, 2);
+    merged.limiterDb = clamp(merged.limiterDb, desktopSafe ? -6 : -24, desktopSafe ? -0.5 : 2);
     merged.sustain = Boolean(merged.sustain);
-    merged.sustainTargetDb = clamp(merged.sustainTargetDb, -24, 12);
-    merged.sustainMaxGain = clamp(merged.sustainMaxGain, 1, 200);
-    merged.forceRawMic = Boolean(merged.forceRawMic);
-    merged.reverbEnabled = Boolean(merged.reverbEnabled);
+    merged.sustainTargetDb = clamp(merged.sustainTargetDb, desktopSafe ? -12 : -24, desktopSafe ? 0 : 12);
+    merged.sustainMaxGain = clamp(merged.sustainMaxGain, 1, desktopSafe ? 16 : 200);
+    merged.forceRawMic = desktopSafe ? false : Boolean(merged.forceRawMic);
+    merged.reverbEnabled = desktopSafe ? false : Boolean(merged.reverbEnabled);
     merged.reverbDelay = clamp(merged.reverbDelay, 0.01, 0.35);
     merged.reverbFeedback = clamp(merged.reverbFeedback, 0, 0.75);
     merged.reverbWet = clamp(merged.reverbWet, 0, 0.6);
-    merged.keepAlive = Boolean(merged.keepAlive);
-    merged.keepAliveGain = clamp(merged.keepAliveGain, 0, 0.005);
-    merged.senderRefreshMs = state.aggressiveRecoveryActive ? 80 : clamp(merged.senderRefreshMs, 100, 1500);
+    merged.keepAlive = desktopSafe ? false : Boolean(merged.keepAlive);
+    merged.keepAliveGain = desktopSafe ? 0 : clamp(merged.keepAliveGain, 0, 0.005);
+    merged.senderRefreshMs = state.aggressiveRecoveryActive ? 80 : clamp(merged.senderRefreshMs, desktopSafe ? 400 : 100, 1500);
     return merged;
   }
 
   function makeSaturationCurve(amount = 0.5, intensity = 1) {
+    const key = `${amount}:${intensity}`;
+    const cached = saturationCurveCache.get(key);
+    if (cached) return cached;
     const k = Math.max(0.0001, amount * 100 * intensity);
     const n = 4096;
     const curve = new Float32Array(n);
@@ -104,6 +112,7 @@
       const x = (i * 2) / n - 1;
       curve[i] = ((Math.PI + k) * x) / (Math.PI + k * Math.abs(x));
     }
+    saturationCurveCache.set(key, curve);
     return curve;
   }
 
@@ -542,6 +551,9 @@
 
   function tuneAudioSender(sender) {
     if (!sender || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
+    // Chrome applies setParameters on its WebRTC worker. Repeating the same write
+    // during every health check can monopolize that worker and delay page input.
+    if (state.tunedSenders.has(sender)) return;
     try {
       const params = sender.getParameters() || {};
       const encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
@@ -553,7 +565,9 @@
         networkPriority: 'high',
         priority: 'high'
       }));
-      sender.setParameters(params).catch(() => {});
+      Promise.resolve(sender.setParameters(params)).then(() => {
+        state.tunedSenders.add(sender);
+      }).catch(() => {});
     } catch (_) {}
   }
 
@@ -666,6 +680,8 @@
   }
 
   function scheduleRecoveryPasses() {
+    if (!state.peerConnections.size || state.recoveryScheduled) return;
+    state.recoveryScheduled = true;
     for (const timer of state.recoverTimers) clearTimeout(timer);
     state.recoverTimers.clear();
     
@@ -679,6 +695,7 @@
         state.recoverTimers.delete(timer);
         resumeAllPipelines();
         reconcileLiveSenders();
+        if (!state.recoverTimers.size) state.recoveryScheduled = false;
       }, delay);
       state.recoverTimers.add(timer);
     });
@@ -887,7 +904,14 @@
     };
   }
 
-  patchTrackConstraints();
+  // Desktop Chromium call pages are sensitive to page-wide WebRTC prototype
+  // replacements. The processed stream returned from getUserMedia is already
+  // sufficient for desktop calls, so keep the global track-constraint hook for
+  // the Android Quetta compatibility path only.
+  const useLegacyWebRtcHooks = state.config.isAndroidQuetta;
+  if (useLegacyWebRtcHooks) {
+    patchTrackConstraints();
+  }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data || event.data.type !== MSG_CFG) return;
@@ -896,17 +920,24 @@
     scheduleRecoveryPasses();
   });
 
-  ['focus', 'pageshow', 'online', 'pointerdown', 'touchstart'].forEach((type) => {
+  // Do not run WebRTC recovery for every click or touch. In current Chrome,
+  // pointer interaction is on the same event loop as the page UI, so those
+  // synchronous sender checks make call controls and dialogs feel unclickable.
+  ['focus', 'pageshow', 'online'].forEach((type) => {
     window.addEventListener(type, scheduleRecoveryPasses, { passive: true });
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) scheduleRecoveryPasses();
   });
 
-  setInterval(() => {
-    enforceAllSourceConstraints();
-    resumeAllPipelines();
-    reconcileLiveSenders();
-  }, cfg().senderRefreshMs);
+  // Keep a lightweight fallback health check, rather than continuously writing
+  // sender parameters at the initial 150 ms configuration cadence.
+  if (useLegacyWebRtcHooks) {
+    setInterval(() => {
+      enforceAllSourceConstraints();
+      resumeAllPipelines();
+      reconcileLiveSenders();
+    }, 1000);
+  }
   window.postMessage({ type: 'MIC_MAXIMIZER_READY' }, '*');
 })();
