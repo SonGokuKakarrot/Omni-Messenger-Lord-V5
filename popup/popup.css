@@ -70,7 +70,9 @@ body[data-theme="ultraQuetta"] {
   position: relative;
   margin: 10px;
   padding: 14px;
-  overflow: hidden;
+  /* keep the popup compact: limit overall height and enable internal scrolling */
+  max-height: calc(80vh - 20px);
+  overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 26px;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(10, 10, 15, 0.9));
