@@ -115,6 +115,8 @@
 
   const HAS_PROMISE_API = typeof globalThis.browser !== 'undefined' && EXT === globalThis.browser;
   let currentPreset = 'royal';
+  let currentConfig = { ...PRESETS.royal.config };
+  let saveTimer = null;
 
   function storageSet(key, value) {
     if (HAS_PROMISE_API) return EXT.storage.local.set({ [key]: value });
@@ -141,18 +143,33 @@
     });
   }
 
-  async function applyPreset(presetName) {
+  function queueConfigSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      storageSet('micMaximizerConfig', currentConfig);
+    }, 120);
+  }
+
+  function saveConfigNow() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    return storageSet('micMaximizerConfig', currentConfig);
+  }
+
+  function applyPreset(presetName) {
     const preset = PRESETS[presetName];
     if (!preset) return;
     
     currentPreset = presetName;
-    const config = { ...preset.config };
-    
-    await storageSet('micMaximizerConfig', config);
+    currentConfig = { ...preset.config };
     
     // Update UI
     updatePresetButtons(presetName);
-    updateControlsFromConfig(config);
+    updateControlsFromConfig(currentConfig);
+    saveConfigNow();
     
     console.log(`[Omni] Applied preset: ${preset.name}`);
   }
@@ -244,40 +261,38 @@
     return value.toFixed(value < 1 ? 4 : 2);
   }
 
-  async function onControlInput(id, el) {
-    const config = await loadConfig();
+  function onControlInput(id, el) {
     const value = parseFloat(el.value);
-    config[id] = value;
+    currentConfig[id] = value;
     
     const output = document.getElementById(`${id}Val`);
     if (output) output.textContent = formatOutput(id, value);
     
-    await storageSet('micMaximizerConfig', config);
-    syncPresetSelection(config);
+    syncPresetSelection(currentConfig);
+    queueConfigSave();
     console.log(`[Omni] Updated ${id}: ${value}`);
   }
 
-  async function onCheckboxChange(id, el) {
-    const config = await loadConfig();
-    config[id] = el.checked;
-    await storageSet('micMaximizerConfig', config);
-    syncPresetSelection(config);
+  function onCheckboxChange(id, el) {
+    currentConfig[id] = el.checked;
+    syncPresetSelection(currentConfig);
+    saveConfigNow();
     console.log(`[Omni] Updated ${id}: ${el.checked}`);
   }
 
   async function init() {
     // Load current config
-    const config = await loadConfig();
-    updateControlsFromConfig(config);
-    syncPresetSelection(config);
+    currentConfig = { ...await loadConfig() };
+    updateControlsFromConfig(currentConfig);
+    syncPresetSelection(currentConfig);
     
     // Setup preset buttons
     document.querySelectorAll('.preset').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', () => {
         const presetName = btn.classList.contains('royal') ? 'royal'
           : btn.classList.contains('lord') ? 'lord'
           : 'ultraQuetta';
-        await applyPreset(presetName);
+        applyPreset(presetName);
       });
     });
 
@@ -293,7 +308,10 @@
 
     controls.forEach((controlId) => {
       const input = document.getElementById(controlId);
-      if (input) input.addEventListener('input', (e) => onControlInput(controlId, e.target));
+      if (input) {
+        input.addEventListener('input', (e) => onControlInput(controlId, e.target));
+        input.addEventListener('change', saveConfigNow);
+      }
     });
 
     // Setup checkboxes

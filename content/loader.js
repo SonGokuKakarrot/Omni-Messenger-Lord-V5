@@ -16,7 +16,11 @@
     window.__micMaxLoaderBusy = true;
 
     const alreadyInjected = document.documentElement?.dataset?.micMaxLoaderInjected === '1';
-    if (alreadyInjected && window.__micMaxInjectorReady) {
+    // Content scripts run in an isolated world in Chrome. The injector runs in
+    // the page world, so its window.__micMaxInjectorReady flag is not visible
+    // here. The document dataset is shared by both worlds and is the only safe
+    // completion marker to use from this loader.
+    if (alreadyInjected) {
       window.__micMaxLoaderBusy = false;
       sendHeartbeat();
       return;
@@ -40,13 +44,4 @@
   }
 
   inject();
-
-  const observer = new MutationObserver(() => {
-    if (!window.__micMaxInjectorReady) inject();
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  setInterval(() => {
-    if (!window.__micMaxInjectorReady) inject();
-  }, 2500);
 })();
