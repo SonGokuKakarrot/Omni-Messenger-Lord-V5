@@ -114,7 +114,47 @@
   };
 
   const HAS_PROMISE_API = typeof globalThis.browser !== 'undefined' && EXT === globalThis.browser;
+  const PC_PROFILE_VERSION = 10;
   let currentPreset = 'royal';
+  let currentConfig = null;
+  let saveTimer = null;
+
+  function limit(value, min, max, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+  }
+
+  function toPcSafeConfig(config = {}) {
+    return {
+      ...config,
+      profileVersion: PC_PROFILE_VERSION,
+      gainDb: limit(config.gainDb, 0, 24, 18),
+      thresholdDb: limit(config.thresholdDb, -45, 0, -38),
+      knee: limit(config.knee, 0, 18, 16),
+      ratio: limit(config.ratio, 1, 8, 6),
+      attack: limit(config.attack, 0.001, 1, 0.003),
+      release: limit(config.release, 0.03, 1, 0.1),
+      lowShelfDb: limit(config.lowShelfDb, -12, 6, 4),
+      presenceDb: limit(config.presenceDb, -12, 8, 5),
+      highShelfDb: limit(config.highShelfDb, -12, 6, 3),
+      presencePeakDb: limit(config.presencePeakDb, -12, 6, 4),
+      limiterDb: limit(config.limiterDb, -6, -0.5, -1),
+      drive: limit(config.drive, 0, 1, 0.5),
+      loudness: limit(config.loudness, 0.5, 1.25, 1.1),
+      maxBoost: limit(config.maxBoost, 1, 16, 12),
+      saturationCurveIntensity: limit(config.saturationCurveIntensity, 0.5, 1.25, 1),
+      sustainTargetDb: limit(config.sustainTargetDb, -12, 0, -4),
+      sustainMaxGain: limit(config.sustainMaxGain, 1, 16, 12),
+      forceRawMic: false,
+      reverbEnabled: false,
+      reverbDelay: 0.02,
+      reverbFeedback: 0,
+      reverbWet: 0,
+      keepAlive: false,
+      keepAliveGain: 0,
+      senderRefreshMs: limit(config.senderRefreshMs, 400, 1500, 600)
+    };
+  }
   let currentConfig = { ...PRESETS.royal.config };
   let saveTimer = null;
 
@@ -164,6 +204,8 @@
     if (!preset) return;
     
     currentPreset = presetName;
+    currentConfig = toPcSafeConfig(preset.config);
+=======
     currentConfig = { ...preset.config };
     
     // Update UI
@@ -205,7 +247,7 @@
 
   function getMatchingPreset(config) {
     return Object.entries(PRESETS).find(([, preset]) => (
-      Object.entries(preset.config).every(([key, value]) => valuesMatch(value, config[key]))
+      Object.entries(toPcSafeConfig(preset.config)).every(([key, value]) => valuesMatch(value, config[key]))
     ))?.[0] || null;
   }
 
@@ -263,10 +305,12 @@
 
   function onControlInput(id, el) {
     const value = parseFloat(el.value);
+    currentConfig = toPcSafeConfig({ ...currentConfig, [id]: value });
+    el.value = currentConfig[id];
     currentConfig[id] = value;
     
     const output = document.getElementById(`${id}Val`);
-    if (output) output.textContent = formatOutput(id, value);
+    if (output) output.textContent = formatOutput(id, currentConfig[id]);
     
     syncPresetSelection(currentConfig);
     queueConfigSave();
@@ -274,6 +318,8 @@
   }
 
   function onCheckboxChange(id, el) {
+    currentConfig = toPcSafeConfig({ ...currentConfig, [id]: el.checked });
+    el.checked = Boolean(currentConfig[id]);
     currentConfig[id] = el.checked;
     syncPresetSelection(currentConfig);
     saveConfigNow();
@@ -282,6 +328,7 @@
 
   async function init() {
     // Load current config
+    currentConfig = toPcSafeConfig(await loadConfig());
     currentConfig = { ...await loadConfig() };
     updateControlsFromConfig(currentConfig);
     syncPresetSelection(currentConfig);
@@ -353,9 +400,10 @@
   async function loadConfig() {
     try {
       const res = await storageGet('micMaximizerConfig');
-      return res.micMaximizerConfig || PRESETS.royal.config;
+      const stored = res.micMaximizerConfig;
+      return stored?.profileVersion === PC_PROFILE_VERSION ? stored : toPcSafeConfig(PRESETS.royal.config);
     } catch (_) {
-      return PRESETS.royal.config;
+      return toPcSafeConfig(PRESETS.royal.config);
     }
   }
 
