@@ -155,8 +155,6 @@
       senderRefreshMs: limit(config.senderRefreshMs, 400, 1500, 600)
     };
   }
-  let currentConfig = { ...PRESETS.royal.config };
-  let saveTimer = null;
 
   function storageSet(key, value) {
     if (HAS_PROMISE_API) return EXT.storage.local.set({ [key]: value });
@@ -202,17 +200,16 @@
   function applyPreset(presetName) {
     const preset = PRESETS[presetName];
     if (!preset) return;
-    
+
     currentPreset = presetName;
+    // Convert preset into the PC-safe config used by the UI
     currentConfig = toPcSafeConfig(preset.config);
-=======
-    currentConfig = { ...preset.config };
-    
+
     // Update UI
     updatePresetButtons(presetName);
     updateControlsFromConfig(currentConfig);
     saveConfigNow();
-    
+
     console.log(`[Omni] Applied preset: ${preset.name}`);
   }
 
@@ -329,7 +326,6 @@
   async function init() {
     // Load current config
     currentConfig = toPcSafeConfig(await loadConfig());
-    currentConfig = { ...await loadConfig() };
     updateControlsFromConfig(currentConfig);
     syncPresetSelection(currentConfig);
     
