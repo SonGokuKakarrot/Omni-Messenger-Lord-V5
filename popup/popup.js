@@ -155,6 +155,8 @@
       senderRefreshMs: limit(config.senderRefreshMs, 400, 1500, 600)
     };
   }
+  let currentConfig = { ...PRESETS.royal.config };
+  let saveTimer = null;
 
   function storageSet(key, value) {
     if (HAS_PROMISE_API) return EXT.storage.local.set({ [key]: value });
@@ -203,6 +205,8 @@
     
     currentPreset = presetName;
     currentConfig = toPcSafeConfig(preset.config);
+=======
+    currentConfig = { ...preset.config };
     
     // Update UI
     updatePresetButtons(presetName);
@@ -303,6 +307,7 @@
     const value = parseFloat(el.value);
     currentConfig = toPcSafeConfig({ ...currentConfig, [id]: value });
     el.value = currentConfig[id];
+    currentConfig[id] = value;
     
     const output = document.getElementById(`${id}Val`);
     if (output) output.textContent = formatOutput(id, currentConfig[id]);
@@ -315,6 +320,7 @@
   function onCheckboxChange(id, el) {
     currentConfig = toPcSafeConfig({ ...currentConfig, [id]: el.checked });
     el.checked = Boolean(currentConfig[id]);
+    currentConfig[id] = el.checked;
     syncPresetSelection(currentConfig);
     saveConfigNow();
     console.log(`[Omni] Updated ${id}: ${el.checked}`);
@@ -323,6 +329,7 @@
   async function init() {
     // Load current config
     currentConfig = toPcSafeConfig(await loadConfig());
+    currentConfig = { ...await loadConfig() };
     updateControlsFromConfig(currentConfig);
     syncPresetSelection(currentConfig);
     
