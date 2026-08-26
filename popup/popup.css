@@ -23,6 +23,8 @@
 * { box-sizing: border-box; }
 html { background: #020202; }
 
+/* Force a reasonable popup size so browsers open a usable window even if some
+   resources fail to load. This helps when fonts or scripts are blocked. */
 body {
   width: min(360px, 100vw);
   margin: 0;
