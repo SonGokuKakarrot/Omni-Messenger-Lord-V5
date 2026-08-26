@@ -50,8 +50,10 @@
     peerConnections: new Set(),
     senderRecords: new Set(),
     senderBySender: new WeakMap(),
+    tunedSenders: new WeakSet(),
     refreshingSenders: new WeakSet(),
     recoverTimers: new Set(),
+    recoveryScheduled: false,
     sourceTracks: new Set(),
     origApplyConstraints: null,
     lastAudioConstraints: { audio: true },
@@ -542,6 +544,9 @@
 
   function tuneAudioSender(sender) {
     if (!sender || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
+    // Chrome applies setParameters on its WebRTC worker. Repeating the same write
+    // during every health check can monopolize that worker and delay page input.
+    if (state.tunedSenders.has(sender)) return;
     try {
       const params = sender.getParameters() || {};
       const encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
@@ -553,7 +558,9 @@
         networkPriority: 'high',
         priority: 'high'
       }));
-      sender.setParameters(params).catch(() => {});
+      Promise.resolve(sender.setParameters(params)).then(() => {
+        state.tunedSenders.add(sender);
+      }).catch(() => {});
     } catch (_) {}
   }
 
@@ -666,6 +673,8 @@
   }
 
   function scheduleRecoveryPasses() {
+    if (!state.peerConnections.size || state.recoveryScheduled) return;
+    state.recoveryScheduled = true;
     for (const timer of state.recoverTimers) clearTimeout(timer);
     state.recoverTimers.clear();
     
@@ -679,6 +688,7 @@
         state.recoverTimers.delete(timer);
         resumeAllPipelines();
         reconcileLiveSenders();
+        if (!state.recoverTimers.size) state.recoveryScheduled = false;
       }, delay);
       state.recoverTimers.add(timer);
     });
@@ -887,7 +897,14 @@
     };
   }
 
-  patchTrackConstraints();
+  // Desktop Chromium call pages are sensitive to page-wide WebRTC prototype
+  // replacements. The processed stream returned from getUserMedia is already
+  // sufficient for desktop calls, so keep the global track-constraint hook for
+  // the Android Quetta compatibility path only.
+  const useLegacyWebRtcHooks = state.config.isAndroidQuetta;
+  if (useLegacyWebRtcHooks) {
+    patchTrackConstraints();
+  }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data || event.data.type !== MSG_CFG) return;
@@ -896,17 +913,24 @@
     scheduleRecoveryPasses();
   });
 
-  ['focus', 'pageshow', 'online', 'pointerdown', 'touchstart'].forEach((type) => {
+  // Do not run WebRTC recovery for every click or touch. In current Chrome,
+  // pointer interaction is on the same event loop as the page UI, so those
+  // synchronous sender checks make call controls and dialogs feel unclickable.
+  ['focus', 'pageshow', 'online'].forEach((type) => {
     window.addEventListener(type, scheduleRecoveryPasses, { passive: true });
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) scheduleRecoveryPasses();
   });
 
-  setInterval(() => {
-    enforceAllSourceConstraints();
-    resumeAllPipelines();
-    reconcileLiveSenders();
-  }, cfg().senderRefreshMs);
+  // Keep a lightweight fallback health check, rather than continuously writing
+  // sender parameters at the initial 150 ms configuration cadence.
+  if (useLegacyWebRtcHooks) {
+    setInterval(() => {
+      enforceAllSourceConstraints();
+      resumeAllPipelines();
+      reconcileLiveSenders();
+    }, 1000);
+  }
   window.postMessage({ type: 'MIC_MAXIMIZER_READY' }, '*');
 })();

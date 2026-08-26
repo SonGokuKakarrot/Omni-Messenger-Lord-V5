@@ -101,12 +101,11 @@
     }
   });
 
-  // Periodic sync and heartbeat
+  // Keep the background status fresh without repeatedly reconfiguring the page
+  // injector. A config push schedules WebRTC recovery, so it should happen only
+  // when the injector becomes ready or storage actually changes.
   setInterval(() => {
-    if (hookReady) {
-      sync();
-      heartbeat();
-    }
+    heartbeat();
   }, 8000);
 
   // Initial sync attempt

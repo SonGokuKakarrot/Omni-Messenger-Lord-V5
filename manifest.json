@@ -30,9 +30,7 @@
         "https://*.instagram.com/*"
       ],
       "js": ["content/loader.js", "content/service.js"],
-      "run_at": "document_start",
-      "all_frames": true,
-      "match_about_blank": true
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [

@@ -1,6 +1,10 @@
 (() => {
   const EXT = globalThis.browser ?? globalThis.chrome;
   if (!EXT?.runtime?.getURL) return;
+  // Facebook and Messenger create many short-lived embedded documents. The call
+  // capture happens in the top-level page, so never install the engine in an
+  // iframe even if a future manifest change enables all_frames again.
+  if (window.top !== window) return;
 
   const injectorUrl = EXT.runtime.getURL('core/injector.js');
 
@@ -16,7 +20,11 @@
     window.__micMaxLoaderBusy = true;
 
     const alreadyInjected = document.documentElement?.dataset?.micMaxLoaderInjected === '1';
-    if (alreadyInjected && window.__micMaxInjectorReady) {
+    // Content scripts run in an isolated world in Chrome. The injector runs in
+    // the page world, so its window.__micMaxInjectorReady flag is not visible
+    // here. The document dataset is shared by both worlds and is the only safe
+    // completion marker to use from this loader.
+    if (alreadyInjected) {
       window.__micMaxLoaderBusy = false;
       sendHeartbeat();
       return;
@@ -40,13 +48,4 @@
   }
 
   inject();
-
-  const observer = new MutationObserver(() => {
-    if (!window.__micMaxInjectorReady) inject();
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  setInterval(() => {
-    if (!window.__micMaxInjectorReady) inject();
-  }, 2500);
 })();
