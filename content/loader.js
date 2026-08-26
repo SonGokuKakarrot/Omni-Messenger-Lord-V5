@@ -1,6 +1,10 @@
 (() => {
   const EXT = globalThis.browser ?? globalThis.chrome;
   if (!EXT?.runtime?.getURL) return;
+  // Facebook and Messenger create many short-lived embedded documents. The call
+  // capture happens in the top-level page, so never install the engine in an
+  // iframe even if a future manifest change enables all_frames again.
+  if (window.top !== window) return;
 
   const injectorUrl = EXT.runtime.getURL('core/injector.js');
 

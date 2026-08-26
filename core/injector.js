@@ -897,7 +897,14 @@
     };
   }
 
-  patchTrackConstraints();
+  // Desktop Chromium call pages are sensitive to page-wide WebRTC prototype
+  // replacements. The processed stream returned from getUserMedia is already
+  // sufficient for desktop calls, so keep the global track-constraint hook for
+  // the Android Quetta compatibility path only.
+  const useLegacyWebRtcHooks = state.config.isAndroidQuetta;
+  if (useLegacyWebRtcHooks) {
+    patchTrackConstraints();
+  }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data || event.data.type !== MSG_CFG) return;
@@ -918,6 +925,13 @@
 
   // Keep a lightweight fallback health check, rather than continuously writing
   // sender parameters at the initial 150 ms configuration cadence.
+  if (useLegacyWebRtcHooks) {
+    setInterval(() => {
+      enforceAllSourceConstraints();
+      resumeAllPipelines();
+      reconcileLiveSenders();
+    }, 1000);
+  }
   setInterval(() => {
     enforceAllSourceConstraints();
     resumeAllPipelines();
