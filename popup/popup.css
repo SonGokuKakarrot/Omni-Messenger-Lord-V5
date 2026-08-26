@@ -1,11 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
-/*
-  Refined popup stylesheet for Omni Messenger Lord V4 ULTRA
-  - Based on the WhatsApp-working popup.css but tuned for the V5 control set
-  - Keeps the popup compact, scrollable, and avoids heavy backdrop filters
-  - Adds explicit width/min-width rules to prevent ultra-narrow popup rendering
+/* popup/popup.css
+   Modified to force a square popup window and keep the inner panel scrollable
+   so all controls remain visible and usable in Chromium extension popups.
+   Paste this over popup/popup.css in your extension.
 */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root {
   color-scheme: dark;
@@ -21,21 +20,23 @@
   --cyan: #67e8f9;
 }
 
+/* Base reset */
 * { box-sizing: border-box; }
-html { background: #020202; }
-/* Strong width guarantees for Chromium popups: prevents ultra-narrow strip rendering */
+html { background: var(--bg-a); }
+
+/* === FORCE SQUARE POPUP: change size here if you prefer different square === */
+:root { --popup-size: 420px; } /* both width and height */
 html, body, .panel {
-  width: 380px !important;
-  min-width: 360px !important;
-  max-width: 380px !important;
+  width: var(--popup-size) !important;
+  min-width: var(--popup-size) !important;
+  max-width: var(--popup-size) !important;
+  height: var(--popup-size) !important;
+  min-height: var(--popup-size) !important;
+  max-height: var(--popup-size) !important;
 }
 
 body {
-   resources fail to load. This helps when fonts or scripts are blocked. */
-body {
-  width: min(360px, 100vw);
   margin: 0;
-  min-height: 420px; /* keep popup visible even if resources fail */
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
   background:
@@ -43,13 +44,15 @@ body {
     radial-gradient(circle at 90% 20%, rgba(179,136,255,0.10), transparent 34%),
     linear-gradient(145deg, var(--bg-a), #08060f, var(--bg-b));
   -webkit-font-smoothing: antialiased;
-       overflow: hidden; /* prevent body scrollbar from showing in small popup contexts */
+  overflow: hidden; /* body should not scroll; .panel is the scroll container */
 }
 
+/* Theme color overrides */
 body[data-theme="royal"] { --gold: #39ff88; --pink: #22d3ee; --violet: #14b8a6; }
 body[data-theme="lord"]  { --gold: #fff01f; --pink: #ff3d00; --violet: #ffd400; }
 body[data-theme="ultraQuetta"] { --gold: #00d9ff; --pink:#0ff0ff; --violet:#00e5ff; }
 
+/* Panel: the visible card inside the popup and the scroll container */
 .panel {
   position: relative;
   margin: 10px;
@@ -58,11 +61,11 @@ body[data-theme="ultraQuetta"] { --gold: #00d9ff; --pink:#0ff0ff; --violet:#00e5
   border: 1px solid var(--line);
   background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(6,8,22,0.82));
   box-shadow: 0 18px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.03);
-  max-height: calc(80vh - 20px);
-  overflow: auto;
-    display: block;
+  overflow: auto; /* internal scrolling for content */
+  display: block;
 }
 
+/* Soft glow decoration */
 .panel::before {
   content: "";
   position: absolute;
@@ -74,10 +77,12 @@ body[data-theme="ultraQuetta"] { --gold: #00d9ff; --pink:#0ff0ff; --violet:#00e5
   pointer-events: none;
 }
 
+/* Header */
 .hero { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .eyebrow { margin:0; color:var(--gold); font-size:11px; font-weight:800; letter-spacing:0.18em; text-transform:uppercase; }
-h1 { margin:0; font-size:20px; line-height:1; font-weight:800; background:linear-gradient(90deg,#fff,var(--gold),var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+h1 { margin:0; font-size:18px; line-height:1; font-weight:800; background:linear-gradient(90deg,#fff,var(--gold),var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent; }
 
+/* Toggle switch */
 .switch { width:54px; height:30px; position:relative; display:inline-flex; }
 .switch input { position:absolute; opacity:0; }
 .slider { position:absolute; inset:0; border-radius:999px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); box-shadow: inset 0 2px 8px rgba(0,0,0,0.35); transition:0.18s ease; }
@@ -85,44 +90,58 @@ h1 { margin:0; font-size:20px; line-height:1; font-weight:800; background:linear
 .switch input:checked + .slider { background: linear-gradient(135deg,var(--gold),var(--pink)); }
 .switch input:checked + .slider::after { transform: translateX(24px); }
 
+/* Status box */
 .status { margin:10px 0; padding:8px 10px; border-radius:10px; border:1px solid var(--line); background: rgba(255,255,255,0.025); color:var(--muted); font-weight:700; font-size:12px; }
 .status.ok { color:#e6ffe9; background: rgba(34,197,94,0.08); border-color: rgba(57,255,136,0.12); }
 .status.warn { color:#fff7d6; background: rgba(255,176,32,0.06); border-color: rgba(255,209,102,0.08); }
 
-.presets { padding:10px; border-radius:12px; border:1px solid var(--line); background: rgba(255,255,255,0.02); }
+/* Presets layout */
+.presets { padding:8px; border-radius:10px; border:1px solid var(--line); background: rgba(255,255,255,0.02); }
 .sectionTitle { display:flex; align-items:end; justify-content:space-between; gap:8px; }
 .sectionTitle h2 { margin:0; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; }
 .sectionTitle span { color:var(--muted); font-size:11px; }
 
-.presetGrid { display:grid; grid-template-columns: 1fr; gap:8px; margin-top:8px; }
-.preset { padding:8px 10px; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); color:#fff; cursor:pointer; font-weight:800; }
-.preset strong { display:block; font-size:13px; }
+.presetGrid { display:grid; grid-template-columns: 1fr; gap:6px; margin-top:6px; }
+.preset { padding:6px 8px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); color:#fff; cursor:pointer; font-weight:800; font-size:13px; }
+.preset strong { display:block; }
 .preset small { display:block; opacity:0.9; font-weight:700; font-size:11px; }
+
 .preset.royal { background: linear-gradient(135deg,#0d3c33,#0a9aa2); }
 .preset.lord { background: linear-gradient(135deg,#5b1023,#8b5cf6); }
 .preset.ultraQuetta { background: linear-gradient(135deg,#002b3d,#00d9ff); }
 .preset[aria-pressed="true"], .preset.active { box-shadow: 0 6px 18px rgba(0,0,0,0.45); border-color: rgba(255,255,255,0.14); }
 
-.hint { color:var(--muted); font-size:12px; margin-top:8px; }
+/* Hint text */
+.hint { color:var(--muted); font-size:12px; margin-top:6px; }
 
-.controls { display:grid; gap:8px; margin-top:8px; max-height:360px; overflow:auto; padding-right:6px; }
+/* Controls area: scrollable inside panel */
+.controls { display:grid; gap:6px; margin-top:6px; max-height:240px; overflow:auto; padding-right:6px; }
 .controls::-webkit-scrollbar { width:6px; }
 .controls::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius:6px; }
 
-.field { display:grid; grid-template-columns: 1fr 80px; gap:8px 10px; align-items:center; padding:8px; border-radius:10px; background: rgba(6,8,22,0.28); border:1px solid rgba(255,255,255,0.03); }
+/* Control field styling */
+.field { display:grid; grid-template-columns: 1fr 80px; gap:6px 8px; align-items:center; padding:6px; border-radius:8px; background: rgba(6,8,22,0.28); border:1px solid rgba(255,255,255,0.03); }
 .field label { grid-column:1 / -1; color:var(--muted); font-size:12px; font-weight:800; }
 .field em { color:var(--gold); font-style:normal; }
 
 input[type="range"] { width:100%; accent-color:var(--gold); height:8px; }
 output { min-width:80px; text-align:right; font-weight:900; color:var(--text); }
 
-.checkField, .check { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background: rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); color:var(--muted); font-weight:800; }
+/* Check fields */
+.checkField, .check { display:flex; align-items:center; gap:8px; padding:6px; border-radius:8px; background: rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); color:var(--muted); font-weight:800; }
 .checkField input, .check input { width:18px; height:18px; accent-color:var(--gold); }
 
-footer { margin-top:10px; color:var(--muted); font-size:12px; }
+/* Footer */
+footer { margin-top:8px; color:var(--muted); font-size:12px; }
 
+/* Accessibility */
 button, input { font-family:inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 
-@media (min-width: 420px) {
-  html, body, .panel { width: 380px !important; min-width: 380px !important; }
+/* Fallback notice visible if added to HTML */
+#fallback { padding:8px; margin-top:8px; border-radius:8px; border:1px dashed rgba(255,255,255,0.06); color:var(--muted); background: rgba(255,255,255,0.01); font-size:13px; }
+
+/* Media safety: keep the popup square on larger screens too */
+@media (min-width: 480px) {
+  html, body, .panel { width: var(--popup-size) !important; min-width: var(--popup-size) !important; height: var(--popup-size) !important; }
 }
